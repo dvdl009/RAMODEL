@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Onkalo — Kernafvalopslag</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  background:#ffffff;
+  color:#1a2030;
+  font-family:'Segoe UI',system-ui,sans-serif;
+  overflow:hidden;
+  height:100vh;
+}
+#canvas-container{
+  position:fixed;inset:0;
+  background:#ffffff;
+}
+/* Subtiele ruitjesachtergrond */
+#canvas-container::before{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(100,140,200,0.09) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(100,140,200,0.09) 1px,transparent 1px);
+  background-size:36px 36px;
+  pointer-events:none;z-index:1;
+}
+#canvas-container canvas{position:relative;z-index:2}
+
+/* Header */
+#header{
+  position:fixed;top:0;left:0;right:0;z-index:100;
+  padding:14px 20px;
+  display:flex;align-items:baseline;gap:12px;
+}
+#header h1{font-size:15px;font-weight:600;color:#2a3a5a;letter-spacing:0.02em}
+#header p{font-size:11px;color:#8090a8}
+
+/* Rechter paneel */
+#side-panel{
+  position:fixed;top:0;right:0;bottom:0;
+  width:220px;
+  background:rgba(250,251,253,0.96);
+  border-left:1px solid #dde3ee;
+  z-index:200;
+  display:flex;flex-direction:column;
+  padding:0;
+}
+
+/* View toggle bovenaan paneel */
+#view-toggle{
+  padding:16px 16px 12px;
+  border-bottom:1px solid #e8ecf4;
+}
+#view-toggle p{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#8090a8;margin-bottom:8px}
+.toggle-row{
+  display:flex;border:1px solid #d0d8e8;border-radius:6px;overflow:hidden;
+}
+.toggle-btn{
+  flex:1;padding:6px 0;font-size:12px;
+  background:none;border:none;cursor:pointer;
+  color:#6070a0;transition:all 0.2s;
+}
+.toggle-btn.active{background:#2a3a6a;color:#fff}
+
+/* Legenda */
+#legend-section{
+  padding:14px 16px;
+  border-bottom:1px solid #e8ecf4;
+  flex-shrink:0;
+}
+#legend-section h4{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:#8090a8;margin-bottom:10px}
+.leg-item{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:7px;cursor:pointer;
+  transition:opacity 0.15s;padding:2px 0;
+  border-radius:4px;
+}
+.leg-item:hover{opacity:0.65}
+.leg-item.selected .leg-label{font-weight:600;color:#1a2a4a}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.leg-label{font-size:12px;color:#4a5870}
+
+/* Info sectie */
+#info-section{
+  padding:14px 16px;
+  flex:1;overflow-y:auto;
+}
+#info-section.hidden{display:none}
+#info-name{font-size:13px;font-weight:600;color:#1a2a4a;margin-bottom:6px}
+#info-body{font-size:12px;line-height:1.7;color:#4a5870}
+.stat-row{
+  display:flex;justify-content:space-between;
+  padding:4px 0;border-bottom:1px solid #eef0f6;
+}
+.stat-key{font-size:11px;color:#8090a8}
+.stat-val{font-size:11px;font-weight:600;color:#3a4e78}
+
+/* Close / deselect */
+#deselect-btn{
+  position:absolute;top:8px;right:8px;
+  background:none;border:none;cursor:pointer;
+  color:#8090a8;font-size:14px;padding:4px;
+  display:none;
+}
+#deselect-btn:hover{color:#2a3a5a}
+
+/* Bediening hint */
+#hint{
+  position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  font-size:11px;color:#aab0c0;
+  pointer-events:none;z-index:100;
+  letter-spacing:0.02em;
+}
+
+canvas.pointer{cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="header">
+  <h1>Onkalo</h1>
+  <p>Kernafvalopslag · Finland · 700 m diepte</p>
+</div>
+
+<div id="side-panel">
+  <div id="view-toggle">
+    <p>Weergave</p>
+    <div class="toggle-row">
+      <button class="toggle-btn active" id="btn-wire" onclick="setMode('wire')">Lijntjes</button>
+      <button class="toggle-btn" id="btn-mat" onclick="setMode('mat')">Materiaal</button>
+    </div>
+  </div>
+
+  <div id="legend-section">
+    <h4>Lagen</h4>
+    <div class="leg-item" data-key="schacht" onclick="selectByKey('schacht')">
+      <div class="leg-dot" style="background:#5b8db8"></div>
+      <span class="leg-label">Schacht (700 m)</span>
+    </div>
+    <div class="leg-item" data-key="tunnel" onclick="selectByKey('tunnel')">
+      <div class="leg-dot" style="background:#4a7aa0"></div>
+      <span class="leg-label">Horizontale tunnel</span>
+    </div>
+    <div class="leg-item" data-key="graniet" onclick="selectByKey('graniet')">
+      <div class="leg-dot" style="background:#6a7a8a"></div>
+      <span class="leg-label">Graniet</span>
+    </div>
+    <div class="leg-item" data-key="bentoniet" onclick="selectByKey('bentoniet')">
+      <div class="leg-dot" style="background:#8a7040"></div>
+      <span class="leg-label">Bentonietklei</span>
+    </div>
+    <div class="leg-item" data-key="koper" onclick="selectByKey('koper')">
+      <div class="leg-dot" style="background:#a06820"></div>
+      <span class="leg-label">Koperen cilinder</span>
+    </div>
+    <div class="leg-item" data-key="kernafval" onclick="selectByKey('kernafval')">
+      <div class="leg-dot" style="background:#8a3a2a"></div>
+      <span class="leg-label">Kernafval</span>
+    </div>
+  </div>
+
+  <div id="info-section" class="hidden">
+    <button id="deselect-btn" onclick="deselect()">✕</button>
+    <div id="info-name"></div>
+    <div id="info-body"></div>
+  </div>
+</div>
+
+<div id="hint">sleep = draaien &nbsp;·&nbsp; scroll = zoom &nbsp;·&nbsp; klik = focus</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+const INFO = {
+  schacht:{
+    name:'Vertikale schacht',
+    stats:[['Diepte','700 m'],['Afsluiting','Bentoniet + beton'],['Locatie','Onkalo, Finland']],
+    text:'Vanaf het oppervlak wordt een schacht van 700 meter naar beneden gegraven. Via deze schacht worden de containers naar de depositietunnels gebracht. De diepte zorgt ervoor dat water en mens of dier de opslag moeilijk kunnen bereiken.'
+  },
+  tunnel:{
+    name:'Horizontale tunnel',
+    stats:[['Diepte','700 m'],['Richting','Horizontaal'],['Gaten','1 per container'],['Afsluiting','Bentoniet + beton']],
+    text:'Op 700 meter diepte zijn horizontale tunnels geboord. Vanuit die gangen zijn ronde depositie-gaten in de vloer geboord. In elk depositie-gat wordt één container geplaatst.'
+  },
+  graniet:{
+    name:'Graniet',
+    stats:[['Diepte','700 m'],['Gatbreedte','~2,8 m'],['Leeftijd','1,9 miljard jaar'],['Type','Massief kristallijn'],['Stabiliteit','Vrijwel onveranderd']],
+    text:'Het graniet staat op 700 m diepte onder enorme druk door het gewicht van alles daarboven. Die druk sluit microscheurtjes, waardoor water vrijwel geen doorgang vindt. Het Finse graniet van Onkalo is 1,9 miljard jaar oud.'
+  },
+  bentoniet:{
+    name:'Bentonietklei (laag 2)',
+    stats:[['Dikte','1 m rondom'],['Doorlatendheid','< 10⁻¹² m/s'],['Waterbeweging','< 1 m / 100.000 jr'],['Zwelling','Tot 15× volume']],
+    text:'Rondom de koperen container worden blokken bentonietklei gestapeld. Bentoniet zwelt sterk bij contact met vocht en absorbeert het water, zodat het kernafval op afstand blijft van grondwater.'
+  },
+  koper:{
+    name:'Koperen cilinder (laag 1)',
+    stats:[['Wanddikte','5 cm'],['Las','Elektronenstraal, vacuüm'],['Controle','Röntgenfoto'],['Levensduur','~1 miljoen jaar']],
+    text:'De container met kernafval wordt in een dikwandige koperen cilinder geplaatst. Koper corrodeert nauwelijks zonder zuurstof. Op 700 m diepte is er vrijwel geen zuurstof aanwezig.'
+  },
+  kernafval:{
+    name:'Kernafval',
+    stats:[['Gevaarlijkheid','Miljoenen jaren'],['Straling','Alfa, bèta, gamma'],['Warmte','Hoog (eerste eeuwen)']],
+    text:'Kernafval is het gevaarlijke restproduct van kernenergie. Het zendt straling uit die cellen beschadigt en kanker kan veroorzaken. Sommige stoffen blijven miljoenen jaren gevaarlijk.'
+  }
+};
+
+// ── KLEUREN ───────────────────────────────────────────────────────────────
+const COLORS = {
+  schacht:   { wire:0x4a78a0, mat:0x5b8db8 },
+  tunnel:    { wire:0x3a6888, mat:0x4a7aa0 },
+  graniet:   { wire:0x5a6a78, mat:0x7a8898 },
+  bentoniet: { wire:0x7a6030, mat:0x9a8050 },
+  koper:     { wire:0x8a5818, mat:0xb07830 },
+  kernafval: { wire:0x7a3020, mat:0xa04030 }
+};
+
+// ── GLOBALS ───────────────────────────────────────────────────────────────
+let scene, camera, renderer;
+let group; // root rotation group
+let viewMode = 'wire'; // 'wire' | 'mat'
+let meshSets = {}; // key -> { wireMeshes:[], matMeshes:[] }
+let clickSpheres = []; // { mesh, key, defaultPos }
+
+let isDragging=false, prevMouse={x:0,y:0}, dragDelta=0;
+let rotX=0.25, rotY=0.5, targetRotX=0.25, targetRotY=0.5;
+let zoom=1, targetZoom=1;
+let hoveredKey=null;
+
+// Focus animation
+let focusTarget=null; // {x,y,z} world or null
+let focusProgress=1;
+let cameraOffset={x:0,y:0,z:18};
+let targetOffset={x:0,y:0,z:18};
+
+const raycaster = new THREE.Raycaster();
+const mouse2 = new THREE.Vector2();
+
+let selectedKey=null;
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+function init(){
+  const cont = document.getElementById('canvas-container');
+  const W=cont.clientWidth, H=cont.clientHeight;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xffffff);
+
+  camera = new THREE.PerspectiveCamera(42, W/H, 0.1, 500);
+  camera.position.set(0,0,18);
+
+  renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(devicePixelRatio);
+  renderer.setSize(W,H);
+  cont.appendChild(renderer.domElement);
+
+  group = new THREE.Group();
+  scene.add(group);
+
+  addLights();
+  buildScene();
+  setMode('wire');
+  addEvents();
+  animate();
+}
+
+function addLights(){
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const d1=new THREE.DirectionalLight(0xd0e0f0,1.2); d1.position.set(6,10,8); scene.add(d1);
+  const d2=new THREE.DirectionalLight(0xf0e0d0,0.4); d2.position.set(-6,-4,-6); scene.add(d2);
+}
+
+// ── BUILD SCENE ───────────────────────────────────────────────────────────
+function addSet(key, wireMesh, matMesh){
+  if(!meshSets[key]) meshSets[key]={wireMeshes:[],matMeshes:[]};
+  wireMesh.userData.key=key;
+  matMesh.userData.key=key;
+  wireMesh.visible=false;
+  matMesh.visible=false;
+  group.add(wireMesh);
+  group.add(matMesh);
+  meshSets[key].wireMeshes.push(wireMesh);
+  meshSets[key].matMeshes.push(matMesh);
+}
+
+function makePair(geo, key){
+  const wm = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color:COLORS[key].wire, wireframe:true, transparent:true, opacity:0.85
+  }));
+  const mm = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+    color:COLORS[key].mat, transparent:true, opacity:0.88
+  }));
+  return {wm,mm};
+}
+
+function makePairOpen(geo, key, opacity=0.22){
+  // For open/hollow shapes that show interior
+  const wm = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color:COLORS[key].wire, wireframe:true, transparent:true, opacity:0.5
+  }));
+  const mm = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+    color:COLORS[key].mat, transparent:true, opacity, side:THREE.DoubleSide
+  }));
+  return {wm,mm};
+}
+
+function buildScene(){
+
+  // ── GRANIET BLOK (open, transparant) ──────────────────────────────────
+  // Groot blok, afgesneden voorkant zodat binnenkant zichtbaar is
+  const gGeo = new THREE.BoxGeometry(9,13,8);
+  const {wm:gWire, mm:gMat} = makePairOpen(gGeo,'graniet',0.12);
+  gWire.position.set(0,-0.5,0);
+  gMat.position.set(0,-0.5,0);
+  addSet('graniet',gWire,gMat);
+
+  // Graniet extra face-edge lines voor structuur
+  const gEdge = new THREE.EdgesGeometry(gGeo);
+  const gEdgeWire = new THREE.LineSegments(gEdge, new THREE.LineBasicMaterial({color:0x8090a8,transparent:true,opacity:0.35}));
+  gEdgeWire.position.set(0,-0.5,0);
+  gEdgeWire.userData.key='graniet'; gEdgeWire.userData.isEdge=true;
+  group.add(gEdgeWire);
+  meshSets['graniet'].wireMeshes.push(gEdgeWire);
+
+  const gEdgeMat = gEdgeWire.clone();
+  gEdgeMat.userData.key='graniet'; gEdgeMat.userData.isEdge=true;
+  group.add(gEdgeMat);
+  meshSets['graniet'].matMeshes.push(gEdgeMat);
+
+  // ── VERTICALE SCHACHT ─────────────────────────────────────────────────
+  // Open cilinder (alleen wanden)
+  const shaftGeo = new THREE.CylinderGeometry(0.38,0.38,9,24,1,true);
+  const {wm:sWire,mm:sMat} = makePair(shaftGeo,'schacht');
+  sMat.material.side=THREE.DoubleSide;
+  sMat.material.opacity=0.55;
+  sWire.position.set(0,3.0,0);
+  sMat.position.set(0,3.0,0);
+  addSet('schacht',sWire,sMat);
+
+  // Bovenkant schacht ring (oppervlak)
+  const topRingGeo = new THREE.TorusGeometry(0.38,0.04,8,32);
+  const {wm:trW,mm:trM}=makePair(topRingGeo,'schacht');
+  trW.position.set(0,7.5,0); trW.rotation.x=Math.PI/2;
+  trM.position.set(0,7.5,0); trM.rotation.x=Math.PI/2;
+  addSet('schacht',trW,trM);
+
+  // Schacht rand-lijnen (horizontaal)
+  for(let i=0;i<5;i++){
+    const y=5-i*2.2;
+    const rg=new THREE.TorusGeometry(0.38,0.012,6,28);
+    const {wm:rW,mm:rM}=makePair(rg,'schacht');
+    rW.position.set(0,y,0); rW.rotation.x=Math.PI/2;
+    rM.position.set(0,y,0); rM.rotation.x=Math.PI/2;
+    addSet('schacht',rW,rM);
+  }
+
+  // ── HORIZONTALE HOOFDTUNNEL ───────────────────────────────────────────
+  // Langere, duidelijkere tunnel
+  const tunGeo = new THREE.CylinderGeometry(0.36,0.36,10,24,1,true);
+  const {wm:tW,mm:tM}=makePair(tunGeo,'tunnel');
+  tM.material.side=THREE.DoubleSide;
+  tM.material.opacity=0.5;
+  tW.rotation.z=Math.PI/2; tM.rotation.z=Math.PI/2;
+  tW.position.set(0,-1.8,0); tM.position.set(0,-1.8,0);
+  addSet('tunnel',tW,tM);
+
+  // Tunnel eindkappen
+  for(const xEnd of [-5,5]){
+    const capGeo=new THREE.CircleGeometry(0.36,24);
+    const {wm:cW,mm:cM}=makePair(capGeo,'tunnel');
+    cW.rotation.y=Math.PI/2; cM.rotation.y=Math.PI/2;
+    cW.position.set(xEnd,-1.8,0); cM.position.set(xEnd,-1.8,0);
+    addSet('tunnel',cW,cM);
+  }
+
+  // Tunnel rand-lijnen
+  for(let i=-4;i<=4;i++){
+    const rg=new THREE.TorusGeometry(0.36,0.012,6,28);
+    const {wm:rW,mm:rM}=makePair(rg,'tunnel');
+    rW.position.set(i*1.1,-1.8,0); rW.rotation.y=Math.PI/2;
+    rM.position.set(i*1.1,-1.8,0); rM.rotation.y=Math.PI/2;
+    addSet('tunnel',rW,rM);
+  }
+
+  // ── VERBINDING SCHACHT → TUNNEL ───────────────────────────────────────
+  const connGeo=new THREE.CylinderGeometry(0.28,0.28,1.8,16,1,true);
+  const {wm:cW2,mm:cM2}=makePair(connGeo,'schacht');
+  cM2.material.opacity=0.4; cM2.material.side=THREE.DoubleSide;
+  cW2.position.set(0,-0.2,0); cM2.position.set(0,-0.2,0);
+  addSet('schacht',cW2,cM2);
+
+  // ── 3 DEPOSITIE GATEN + CONTAINERS ────────────────────────────────────
+  const dpX=[-2.4,0,2.4];
+  dpX.forEach((xPos,idx)=>{
+
+    // Depositie-gat (open cilinder naar beneden)
+    const dgGeo=new THREE.CylinderGeometry(0.25,0.25,3.2,18,1,true);
+    const {wm:dgW,mm:dgM}=makePairOpen(dgGeo,'tunnel',0.3);
+    dgM.material.side=THREE.DoubleSide;
+    dgW.position.set(xPos,-3.4,0); dgM.position.set(xPos,-3.4,0);
+    addSet('tunnel',dgW,dgM);
+
+    // Bodemplaat gat
+    const dgFloor=new THREE.CircleGeometry(0.25,18);
+    const {wm:dfW,mm:dfM}=makePair(dgFloor,'tunnel');
+    dfW.rotation.x=-Math.PI/2; dfM.rotation.x=-Math.PI/2;
+    dfW.position.set(xPos,-5.05,0); dfM.position.set(xPos,-5.05,0);
+    addSet('tunnel',dfW,dfM);
+
+    // Rand-ringen voor depositie-gat
+    for(let r=0;r<4;r++){
+      const rg=new THREE.TorusGeometry(0.25,0.01,6,20);
+      const {wm:rW,mm:rM}=makePair(rg,'tunnel');
+      rW.position.set(xPos,-1.95-r*0.8,0); rW.rotation.x=Math.PI/2;
+      rM.position.set(xPos,-1.95-r*0.8,0); rM.rotation.x=Math.PI/2;
+      addSet('tunnel',rW,rM);
+    }
+
+    // ── BENTONIET ─────────────────────────────────────────────────────
+    const bGeo=new THREE.CylinderGeometry(0.22,0.22,2.8,18);
+    const {wm:bW,mm:bM}=makePair(bGeo,'bentoniet');
+    bW.position.set(xPos,-3.5,0); bM.position.set(xPos,-3.5,0);
+    addSet('bentoniet',bW,bM);
+
+    // ── KOPER ─────────────────────────────────────────────────────────
+    const kGeo=new THREE.CylinderGeometry(0.14,0.14,2.4,16);
+    const {wm:kW,mm:kM}=makePair(kGeo,'koper');
+    kW.position.set(xPos,-3.5,0); kM.position.set(xPos,-3.5,0);
+    addSet('koper',kW,kM);
+
+    // ── KERNAFVAL ─────────────────────────────────────────────────────
+    const aGeo=new THREE.CylinderGeometry(0.08,0.08,2.0,12);
+    const {wm:aW,mm:aM}=makePair(aGeo,'kernafval');
+    aW.position.set(xPos,-3.5,0); aM.position.set(xPos,-3.5,0);
+    addSet('kernafval',aW,aM);
+
+    // ── KLIKBOL ───────────────────────────────────────────────────────
+    // Klikbare punt per container (zit iets naast de container)
+    if(idx===1){
+      // Midden container: klikpunten voor bentoniet, koper, kernafval
+      addClickSphere('kernafval', new THREE.Vector3(xPos+0.18,-2.6,0));
+      addClickSphere('koper',     new THREE.Vector3(xPos+0.28,-2.9,0));
+      addClickSphere('bentoniet', new THREE.Vector3(xPos+0.38,-3.2,0));
+    }
+  });
+
+  // Klikpunten voor tunnel en schacht
+  addClickSphere('tunnel',   new THREE.Vector3(3.5,-1.8,0));
+  addClickSphere('schacht',  new THREE.Vector3(0.5,4.0,0));
+  addClickSphere('graniet',  new THREE.Vector3(4.0,2.0,0));
+
+  // ── OPPERVLAK LIJN ────────────────────────────────────────────────────
+  const sv=[];
+  for(let x=-4.5;x<=4.5;x+=0.6){
+    sv.push(x,7.5,-4,x,7.5,4);
+    sv.push(-4.5,7.5,x-(x%0.6),4.5,7.5,x-(x%0.6));
+  }
+  const sGeo=new THREE.BufferGeometry();
+  sGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(sv),3));
+  const surfLine=new THREE.LineSegments(sGeo,new THREE.LineBasicMaterial({color:0x8899bb,transparent:true,opacity:0.18}));
+  surfLine.userData.isSurface=true;
+  group.add(surfLine);
+
+  // ── LABELS (sprites) ──────────────────────────────────────────────────
+  addLabel('Oppervlak', new THREE.Vector3(-3.5,7.8,0), '#8899bb', 11);
+  addLabel('0 m',       new THREE.Vector3(-4.5,7.5,0), '#aab0c0', 10);
+  addLabel('700 m',     new THREE.Vector3(-4.5,-1.8,0),'#7090a8', 10);
+  addLabel('Schacht',   new THREE.Vector3(0.7,4.5,0),  '#5b8db8', 12);
+  addLabel('Tunnel',    new THREE.Vector3(4.0,-1.1,0), '#4a7aa0', 12);
+  addLabel('Bentoniet', new THREE.Vector3(1.1,-3.2,0), '#8a7040', 12);
+  addLabel('Koper',     new THREE.Vector3(0.85,-3.7,0),'#a06820', 12);
+  addLabel('Kernafval', new THREE.Vector3(0.7,-4.3,0), '#8a3a2a', 12);
+}
+
+function addClickSphere(key, pos){
+  const geo=new THREE.SphereGeometry(0.1,12,12);
+  const mat=new THREE.MeshBasicMaterial({color:COLORS[key].wire,transparent:true,opacity:0.9});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.copy(pos);
+  mesh.userData.key=key;
+  mesh.userData.isClick=true;
+  group.add(mesh);
+  clickSpheres.push({mesh,key,basePos:pos.clone()});
+
+  // Outer ring
+  const rGeo=new THREE.TorusGeometry(0.16,0.013,6,24);
+  const rMat=new THREE.MeshBasicMaterial({color:COLORS[key].wire,transparent:true,opacity:0.4});
+  const ring=new THREE.Mesh(rGeo,rMat);
+  ring.position.copy(pos);
+  ring.userData.ring=true;
+  group.add(ring);
+  clickSpheres.push({mesh:ring,key,basePos:pos.clone(),isRing:true});
+}
+
+function addLabel(text, pos, color, size=12){
+  const cw=256,ch=64;
+  const cv=document.createElement('canvas');
+  cv.width=cw; cv.height=ch;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cw,ch);
+  ctx.font=`${size}px Arial`;
+  ctx.fillStyle=color;
+  ctx.fillText(text,4,ch*0.65);
+  const tex=new THREE.CanvasTexture(cv);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,opacity:0.85});
+  const sp=new THREE.Sprite(mat);
+  sp.scale.set(2.0,0.5,1);
+  sp.position.copy(pos);
+  sp.userData.isLabel=true;
+  group.add(sp);
+}
+
+// ── MODE SWITCH ───────────────────────────────────────────────────────────
+function setMode(mode){
+  viewMode=mode;
+  document.getElementById('btn-wire').classList.toggle('active',mode==='wire');
+  document.getElementById('btn-mat').classList.toggle('active',mode==='mat');
+
+  Object.keys(meshSets).forEach(key=>{
+    const s=meshSets[key];
+    const highlight=(key===selectedKey);
+    s.wireMeshes.forEach(m=>{
+      m.visible=(mode==='wire');
+      if(m.material && !m.userData.isEdge){
+        m.material.opacity = highlight ? 1.0 : 0.85;
+      }
+    });
+    s.matMeshes.forEach(m=>{
+      m.visible=(mode==='mat');
+      if(m.material && !m.userData.isEdge){
+        m.material.opacity = highlight
+          ? (m.material.opacity > 0.5 ? 0.95 : 0.55)
+          : (m.material.opacity > 0.5 ? 0.88 : 0.22);
+      }
+    });
+  });
+
+  // Edge lines: always show in mat mode as accent
+  group.traverse(obj=>{
+    if(obj.userData.isEdge) obj.visible=(mode==='mat');
+  });
+}
+
+// ── SELECT / DESELECT ─────────────────────────────────────────────────────
+function selectByKey(key){
+  selectedKey=key;
+
+  // Update legenda highlight
+  document.querySelectorAll('.leg-item').forEach(el=>{
+    el.classList.toggle('selected',el.dataset.key===key);
+  });
+
+  // Toon info
+  const data=INFO[key];
+  document.getElementById('info-section').classList.remove('hidden');
+  document.getElementById('deselect-btn').style.display='block';
+  document.getElementById('info-name').textContent=data.name;
+
+  let html='';
+  if(data.stats) data.stats.forEach(([k,v])=>{
+    html+=`<div class="stat-row"><span class="stat-key">${k}</span><span class="stat-val">${v}</span></div>`;
+  });
+  if(data.text) html+=`<p style="margin-top:10px;font-size:12px;line-height:1.7;color:#4a5870">${data.text}</p>`;
+  document.getElementById('info-body').innerHTML=html;
+
+  // Dim alles, highlight geselecteerde laag
+  Object.keys(meshSets).forEach(k=>{
+    const s=meshSets[k];
+    const isSelected=(k===key);
+    const arr=viewMode==='wire'?s.wireMeshes:s.matMeshes;
+    arr.forEach(m=>{
+      if(!m.material||m.userData.isEdge) return;
+      if(isSelected){
+        m.material.opacity=m.material.opacity>0.5?0.98:0.6;
+        m.material.transparent=true;
+      } else {
+        m.material.opacity=0.06;
+      }
+    });
+  });
+
+  // Camera focus: bereken gemiddelde positie van meshes van dit key
+  focusCameraOn(key);
+}
+
+function deselect(){
+  selectedKey=null;
+  document.querySelectorAll('.leg-item').forEach(el=>el.classList.remove('selected'));
+  document.getElementById('info-section').classList.add('hidden');
+  document.getElementById('deselect-btn').style.display='none';
+
+  // Reset opaciteit
+  setMode(viewMode);
+
+  // Camera terug naar default
+  targetOffset={x:0,y:0,z:18};
+  targetRotX=0.25; targetRotY=0.5;
+}
+
+function focusCameraOn(key){
+  // Bereken center van de meshes van dit key
+  let cx=0,cy=0,cz=0,cnt=0;
+  const arr=viewMode==='wire'?meshSets[key].wireMeshes:meshSets[key].matMeshes;
+  arr.forEach(m=>{
+    if(!m.userData.isEdge){
+      cx+=m.position.x; cy+=m.position.y; cz+=m.position.z; cnt++;
+    }
+  });
+  if(cnt===0) return;
+  cx/=cnt; cy/=cnt; cz/=cnt;
+
+  // Roteer group zodat object naar voren is
+  const distances={schacht:13,tunnel:13,graniet:16,bentoniet:9,koper:9,kernafval:9};
+  const dist=distances[key]||12;
+
+  targetOffset={x:0,y:0,z:dist};
+  // Pas rotatie aan om object zichtbaar te maken
+  targetRotX=key==='schacht'?-0.1:(key==='graniet'?0.15:0.3);
+  targetRotY=key==='tunnel'?0.1:(key==='graniet'?0.6:0.45);
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────
+function addEvents(){
+  const c=renderer.domElement;
+
+  c.addEventListener('mousedown',e=>{
+    isDragging=true; dragDelta=0;
+    prevMouse={x:e.clientX,y:e.clientY};
+  });
+  c.addEventListener('mouseup',e=>{
+    if(dragDelta<5) handleClick(e);
+    isDragging=false;
+  });
+  c.addEventListener('mousemove',e=>{
+    if(isDragging){
+      const dx=e.clientX-prevMouse.x, dy=e.clientY-prevMouse.y;
+      dragDelta+=Math.abs(dx)+Math.abs(dy);
+      targetRotY+=dx*0.007;
+      targetRotX+=dy*0.007;
+      targetRotX=Math.max(-1.3,Math.min(1.3,targetRotX));
+      prevMouse={x:e.clientX,y:e.clientY};
+    }
+    updateHoverState(e);
+  });
+  c.addEventListener('wheel',e=>{
+    targetZoom=Math.max(0.4,Math.min(3,targetZoom+e.deltaY*0.001));
+    e.preventDefault();
+  },{passive:false});
+
+  c.addEventListener('touchstart',e=>{
+    isDragging=true; dragDelta=0;
+    prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  },{passive:true});
+  c.addEventListener('touchmove',e=>{
+    if(!isDragging)return;
+    const dx=e.touches[0].clientX-prevMouse.x, dy=e.touches[0].clientY-prevMouse.y;
+    dragDelta+=Math.abs(dx)+Math.abs(dy);
+    targetRotY+=dx*0.007; targetRotX+=dy*0.007;
+    prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  },{passive:true});
+  c.addEventListener('touchend',e=>{
+    if(dragDelta<8) handleTouchClick(e);
+    isDragging=false;
+  });
+
+  window.addEventListener('resize',()=>{
+    const W=window.innerWidth,H=window.innerHeight;
+    camera.aspect=W/H; camera.updateProjectionMatrix();
+    renderer.setSize(W,H);
+  });
+}
+
+function getClickables(){
+  return clickSpheres.filter(o=>!o.isRing).map(o=>o.mesh);
+}
+
+function pickKey(e){
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse2.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse2.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse2,camera);
+  const hits=raycaster.intersectObjects(getClickables());
+  return hits.length>0?hits[0].object.userData.key:null;
+}
+
+function handleClick(e){
+  const key=pickKey(e);
+  if(key) selectByKey(key);
+  else deselect();
+}
+
+function handleTouchClick(e){
+  if(e.changedTouches.length===0)return;
+  const t=e.changedTouches[0];
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse2.x=((t.clientX-rect.left)/rect.width)*2-1;
+  mouse2.y=-((t.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse2,camera);
+  const hits=raycaster.intersectObjects(getClickables());
+  if(hits.length>0) selectByKey(hits[0].object.userData.key);
+  else deselect();
+}
+
+function updateHoverState(e){
+  const rect=renderer.domElement.getBoundingClientRect();
+  mouse2.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse2.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse2,camera);
+  const hits=raycaster.intersectObjects(getClickables());
+  hoveredKey=hits.length>0?hits[0].object.userData.key:null;
+  renderer.domElement.classList.toggle('pointer',!!hoveredKey);
+}
+
+// ── ANIMATIE ──────────────────────────────────────────────────────────────
+let t=0;
+function animate(){
+  requestAnimationFrame(animate);
+  t+=0.016;
+
+  // Smooth rotatie
+  rotX+=(targetRotX-rotX)*0.07;
+  rotY+=(targetRotY-rotY)*0.07;
+  zoom+=(targetZoom-zoom)*0.07;
+
+  group.rotation.x=rotX;
+  group.rotation.y=rotY;
+
+  // Camera z (zoom + focus)
+  const tz=targetOffset.z/zoom;
+  camera.position.z+=(tz-camera.position.z)*0.07;
+
+  // Pulseer klik-ringen
+  clickSpheres.forEach(({mesh,key,isRing})=>{
+    if(isRing && mesh.material){
+      const p=0.82+Math.sin(t*2.2)*0.18;
+      mesh.scale.set(p,p,p);
+      mesh.material.opacity=0.25+Math.sin(t*2.2)*0.15;
+    }
+    // Vergroot klikbol bij hover
+    if(!isRing && mesh.userData.isClick){
+      const target=(hoveredKey===key)?1.5:1.0;
+      mesh.scale.lerp(new THREE.Vector3(target,target,target),0.12);
+    }
+  });
+
+  renderer.render(scene,camera);
+}
+
+init();
+</script>
+</body>
+</html>
