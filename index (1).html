@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Onkalo – Kernafvalopslag Finland</title>
+<style>
+:root {
+  --white: #ffffff;
+  --grid: rgba(90,150,220,0.13);
+  --lila: #c4a8e0;
+  --lila-d: #9b72cc;
+  --lila-l: #f0e8ff;
+  --yellow: #fdf3c8;
+  --yellow-d: #e8c84a;
+  --pink: #fce8ef;
+  --pink-d: #e8829a;
+  --green: #e4f5e8;
+  --green-d: #5aaa72;
+  --text: #2a1f3d;
+  --soft: #7a6a92;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#fff;color:var(--text);}
+
+/* grid background */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+  background-size:30px 30px;pointer-events:none;z-index:0;
+}
+
+header{
+  position:relative;z-index:10;
+  background:#fff;
+  border-bottom:1.5px solid var(--lila);
+  padding:10px 20px;
+  display:flex;align-items:center;gap:14px;
+  box-shadow:0 2px 12px rgba(160,100,220,0.08);
+}
+header .logo{width:32px;height:32px;background:linear-gradient(135deg,var(--lila-d),var(--pink-d));border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;}
+header h1{font-size:1.1rem;font-weight:700;color:var(--lila-d);}
+header p{font-size:0.75rem;color:var(--soft);}
+
+#app{position:relative;z-index:1;width:100%;height:calc(100vh - 54px);overflow:hidden;}
+
+/* 3D canvas */
+#three-canvas{display:block;width:100%;height:100%;cursor:grab;}
+#three-canvas:active{cursor:grabbing;}
+
+/* 2D SVG layer */
+#svg-layer{position:absolute;inset:0;display:none;}
+#svg-layer svg{width:100%;height:100%;}
+
+/* RIGHT PANEL */
+#panel{
+  position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  z-index:20;
+  background:rgba(255,255,255,0.96);
+  border:1.5px solid var(--lila);
+  border-radius:16px;
+  padding:14px 10px;
+  display:flex;flex-direction:column;gap:7px;
+  box-shadow:0 4px 24px rgba(160,100,220,0.12);
+  min-width:118px;
+}
+#panel .sec{font-size:0.6rem;color:var(--soft);text-transform:uppercase;letter-spacing:.6px;text-align:center;margin-top:4px;}
+#panel .sec:first-child{margin-top:0;}
+#panel button{
+  display:block;width:100%;
+  padding:7px 8px;
+  border:1.5px solid var(--lila);
+  border-radius:9px;
+  background:var(--lila-l);
+  color:var(--lila-d);
+  font-size:0.73rem;font-weight:600;
+  cursor:pointer;transition:all .15s;
+  text-align:center;
+}
+#panel button:hover,#panel button.on{background:var(--lila-d);color:#fff;border-color:var(--lila-d);}
+#panel hr{border:none;border-top:1px solid #e8e0f4;}
+#panel .zrow{display:flex;gap:5px;}
+#panel .zrow button{flex:1;font-size:.9rem;padding:5px 0;}
+
+/* INFO OVERLAY */
+#info-overlay{
+  position:absolute;inset:0;z-index:30;
+  background:rgba(30,10,60,.5);
+  display:none;align-items:center;justify-content:center;
+}
+#info-overlay.on{display:flex;}
+#info-box{
+  background:#fff;border:2.5px solid var(--lila);border-radius:18px;
+  padding:28px 30px;max-width:360px;width:90%;
+  box-shadow:0 12px 48px rgba(160,100,220,0.2);position:relative;
+}
+#info-box h2{color:var(--lila-d);margin-bottom:10px;font-size:1.1rem;}
+#info-box p{font-size:.85rem;line-height:1.65;color:var(--text);}
+#info-box .tag{
+  display:inline-block;padding:2px 8px;border-radius:20px;
+  font-size:.7rem;font-weight:600;margin-bottom:10px;
+}
+#info-close{position:absolute;top:12px;right:14px;font-size:1.3rem;cursor:pointer;color:var(--soft);background:none;border:none;}
+
+/* loading */
+#loading{position:absolute;inset:0;z-index:50;background:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
+#loading p{color:var(--soft);font-size:.85rem;}
+.spinner{width:36px;height:36px;border:3px solid var(--lila);border-top-color:var(--lila-d);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">⚛</div>
+  <div>
+    <h1>Onkalo – Kernafvalopslag</h1>
+    <p>Diepgeologische opslag · Onkalo, Finland · 700 m diepte</p>
+  </div>
+</header>
+
+<div id="app">
+  <div id="loading"><div class="spinner"></div><p>Model laden…</p></div>
+
+  <canvas id="three-canvas"></canvas>
+  <div id="svg-layer"></div>
+
+  <div id="panel">
+    <div class="sec">Weergave</div>
+    <button id="btn-drawn" class="on" onclick="setMode('drawn')">✏️ Getekend</button>
+    <button id="btn-mat" onclick="setMode('mat')">🪨 Materialen</button>
+    <button id="btn-2d" onclick="setMode('2d')">📐 2D Doorsnede</button>
+    <hr/>
+    <div class="sec">Zoom</div>
+    <div class="zrow">
+      <button onclick="zoomBy(1.2)">＋</button>
+      <button onclick="zoomBy(0.83)">－</button>
+    </div>
+    <button onclick="resetCam()" style="font-size:.68rem">↺ Reset</button>
+  </div>
+
+  <div id="info-overlay">
+    <div id="info-box">
+      <button id="info-close" onclick="closeInfo()">✕</button>
+      <span class="tag" id="info-tag"></span>
+      <h2 id="info-title"></h2>
+      <p id="info-body"></p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// INFO DATA
+// ─────────────────────────────────────────────
+const INFO = {
+  schacht:{tag:'Structuur',tagColor:'#e8e0ff',tagText:'#9b72cc',
+    title:'Schacht (verticaal, 700 m)',
+    body:'Vanaf het aardoppervlak is een verticale schacht geboord tot 700 meter diepte. Via de schacht worden containers en materialen neergelaten met een liftmechanisme en kabel. Na gebruik wordt de schacht permanent afgesloten met bentoniet en sulfaatbestendig Portland-beton gemengd met vliegas.'},
+  gang:{tag:'Structuur',tagColor:'#e8e0ff',tagText:'#9b72cc',
+    title:'Hoofdgang (horizontaal)',
+    body:'Vanuit de onderkant van de schacht loopt een rechthoekige horizontale tunnel naar rechts. Vanuit deze hoofdgang vertrekken kortere zijgangetjes, elk met meerdere ronde depositiegaten in de vloer. De gang heeft een rechthoekige doorsnede; alleen de depositiegaten zijn rond.'},
+  depositie:{tag:'Opslag',tagColor:'#fce8ef',tagText:'#c0507a',
+    title:'Depositiegat – 3 lagen',
+    body:'In elk ronde depositiegat gaat één container. Van buiten naar binnen:\n\n🪨 Graniet – stabiel gesteente al miljarden jaren\n🟡 Bentonietklei – 1 m dik, zwelt op met vocht, waterondoorlatend\n🟠 Koperen cilinder – 5 cm dikke wanden, hermetisch gelast in vacuüm\n☢️ Kernafval – gevaarlijk afval dat miljoenen jaren opgesloten blijft'},
+  graniet:{tag:'Barrière 3',tagColor:'#e4f5e8',tagText:'#3a8a52',
+    title:'Graniet – sterkste barrière',
+    body:'Het graniet in Onkalo is 1,9 miljard jaar oud en vrijwel onveranderd. Op 700 meter diepte drukt de druk van het gewicht erboven alle microscheurtjes dicht. Graniet is een van de stabielste gesteentesoorten op aarde – geen water kan er doorheen.'},
+  bentoniet:{tag:'Barrière 2',tagColor:'#fdf3c8',tagText:'#a08020',
+    title:'Bentonietklei – waterdichte buffer',
+    body:'Rondom elke koperen container worden blokken bentonietklei gestapeld. Bij contact met vocht zwelt bentoniet sterk op en absorbeert het water. De doorlatendheid is zo laag dat water er in honderdduizenden jaren nog geen meter doorheen beweegt. Dikte: 1 meter aan alle kanten.'},
+  koper:{tag:'Barrière 1',tagColor:'#fce8ef',tagText:'#c06030',
+    title:'Koperen cilinder',
+    body:'De container met kernafval wordt geplaatst in een dikwandige koperen cilinder (5 cm wanddikte). De deksel wordt dichtgelast met een elektronenstraallasmachine in vacuüm – geen lucht of zuurstof erin. Koper corrodeert nauwelijks zonder zuurstof. Een röntgenfoto controleert de hermetische afsluiting.'},
+};
+
+function showInfo(key){
+  const d=INFO[key]; if(!d) return;
+  document.getElementById('info-tag').textContent=d.tag;
+  document.getElementById('info-tag').style.background=d.tagColor;
+  document.getElementById('info-tag').style.color=d.tagText;
+  document.getElementById('info-title').textContent=d.title;
+  document.getElementById('info-body').innerHTML=d.body.replace(/\n/g,'<br>');
+  document.getElementById('info-overlay').classList.add('on');
+}
+function closeInfo(){document.getElementById('info-overlay').classList.remove('on');}
+
+// ─────────────────────────────────────────────
+// THREE.JS SETUP
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = null; // transparent so CSS grid shows
+
+const W=canvas.clientWidth, H=canvas.clientHeight;
+const camera = new THREE.PerspectiveCamera(45, W/H, 0.1, 2000);
+
+// Lighting
+const ambient = new THREE.AmbientLight(0xffffff,0.7);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xfff8f0,1.1);
+dirLight.position.set(80,120,80);
+dirLight.castShadow=true;
+scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xe8e0ff,0.4);
+fillLight.position.set(-60,40,-40);
+scene.add(fillLight);
+
+// ─────────────────────────────────────────────
+// GEOMETRY HELPERS
+// ─────────────────────────────────────────────
+function box(w,h,d,color,opacity=1){
+  const g=new THREE.BoxGeometry(w,h,d);
+  const m=new THREE.MeshLambertMaterial({color,transparent:opacity<1,opacity});
+  return new THREE.Mesh(g,m);
+}
+function cylinder(rt,rb,h,color,segs=32){
+  const g=new THREE.CylinderGeometry(rt,rb,h,segs);
+  const m=new THREE.MeshLambertMaterial({color});
+  return new THREE.Mesh(g,m);
+}
+function wire(mesh){
+  const g=new THREE.EdgesGeometry(mesh.geometry);
+  const m=new THREE.LineBasicMaterial({color:0xc4a8e0,linewidth:1.5});
+  return new THREE.LineSegments(g,m);
+}
+
+// ─────────────────────────────────────────────
+// SCENE GROUPS
+// ─────────────────────────────────────────────
+const grpDrawn = new THREE.Group();
+const grpMat   = new THREE.Group();
+scene.add(grpDrawn, grpMat);
+
+// ── SCALE NOTE ──
+// Y: 1 unit = 10m  → total depth ~70 units
+// X: tunnel goes right (positive X)
+// Z: side tunnels go forward (positive Z)
+
+// ─── DRAWN GROUP ───────────────────────────────
+{
+  const g = grpDrawn;
+  const lila = 0xc4a8e0;
+  const lilaD = 0x9b72cc;
+
+  // Ground block (semi-transparent, outline style)
+  const ground = box(160,80,80,0xf0e8ff,0.18);
+  ground.position.set(20,-42,0);
+  // outline
+  const gWire = wire(ground);
+  gWire.position.copy(ground.position);
+  g.add(ground, gWire);
+
+  // Surface (top face) – grass strip
+  const surf = box(160,1,80,0xd8eec8,0.6);
+  surf.position.set(20,-2,0);
+  g.add(surf);
+
+  // Trees (simple cones)
+  const treePositions=[[-60,0,-30],[-48,0,-30],[-38,0,-30],[-30,0,-30],[55,0,-30],[65,0,-30],[75,0,-30]];
+  treePositions.forEach(([x,,z])=>{
+    const trunk = cylinder(0.3,0.4,3,0xaa8855);
+    trunk.position.set(x,0,z);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(2.2,5,8),new THREE.MeshLambertMaterial({color:0xb0d0a0}));
+    crown.position.set(x,3.5,z);
+    g.add(trunk,crown);
+  });
+
+  // Surface building
+  const bldg = box(12,5,8,0xe8e0f8,0.5);
+  bldg.position.set(12,2.5,-10);
+  const bWire=wire(bldg); bWire.position.copy(bldg.position);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(8,4,4),new THREE.MeshLambertMaterial({color:0xd8d0f0,transparent:true,opacity:.4}));
+  roof.position.set(12,7,-10); roof.rotation.y=Math.PI/4;
+  g.add(bldg,bWire,roof);
+
+  // Shaft (vertical box, outline)
+  const shaft = box(4,70,4,0xe0d8f8,0.25);
+  shaft.position.set(0,-37,0);
+  const sWire=wire(shaft); sWire.position.copy(shaft.position);
+  g.add(shaft,sWire);
+
+  // Cable in shaft
+  const cableG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-2,0),new THREE.Vector3(0,-72,0)]);
+  const cable=new THREE.Line(cableG,new THREE.LineBasicMaterial({color:0x9b72cc}));
+  g.add(cable);
+
+  // Main horizontal tunnel (goes right from shaft bottom)
+  const mainTun = box(40,5,5,0xe8e0f8,0.2);
+  mainTun.position.set(20,-74,0);
+  const mWire=wire(mainTun); mWire.position.copy(mainTun.position);
+  g.add(mainTun,mWire);
+
+  // Side tunnels (go forward = +Z) with deposition holes
+  const sideZ=[-74]; // y-level
+  const sideXs=[12,26,36]; // positions along main tunnel
+  sideXs.forEach(sx=>{
+    const st=box(4,4,20,0xf0e8ff,0.15);
+    st.position.set(sx,-74,10);
+    const stW=wire(st); stW.position.copy(st.position);
+    g.add(st,stW);
+    // 2 deposition holes per side tunnel
+    [5,15].forEach(sz=>{
+      const dh=cylinder(2.5,2.5,8,0xf0e8ff,0.15);
+      dh.position.set(sx,-80,sz);
+      const dhW=wire(dh); dhW.position.copy(dh.position);
+      // clickable sphere marker
+      const marker=new THREE.Mesh(new THREE.SphereGeometry(1.5,16,16),new THREE.MeshLambertMaterial({color:lilaD}));
+      marker.position.set(sx,-76,sz);
+      marker.userData={info:'depositie'};
+      g.add(dh,dhW,marker);
+    });
+  });
+
+  // Shaft click marker
+  const sm=new THREE.Mesh(new THREE.SphereGeometry(2,16,16),new THREE.MeshLambertMaterial({color:lilaD}));
+  sm.position.set(0,-30,0); sm.userData={info:'schacht'};
+  g.add(sm);
+  // Gang click marker
+  const gm=new THREE.Mesh(new THREE.SphereGeometry(2,16,16),new THREE.MeshLambertMaterial({color:0xe882aa}));
+  gm.position.set(20,-74,0); gm.userData={info:'gang'};
+  g.add(gm);
+}
+
+// ─── MATERIAL GROUP ──────────────────────────
+{
+  const g = grpMat;
+
+  // Sky
+  const sky=box(200,20,120,0xa8d8f8);
+  sky.position.set(0,8,0);
+  g.add(sky);
+
+  // Granite body
+  const granite=box(200,80,120,0x8a7a6a);
+  granite.position.set(0,-42,0);
+  granite.userData={info:'graniet'};
+  g.add(granite);
+
+  // Topsoil
+  const soil=box(200,2,120,0x6a9a50);
+  soil.position.set(0,-1,0);
+  g.add(soil);
+
+  // Finnish trees (material colors)
+  const treeP=[[-60,-1,-30],[-48,-1,-30],[-38,-1,-30],[-30,-1,-30],[55,-1,-30],[65,-1,-30],[75,-1,-30],[82,-1,-30]];
+  treeP.forEach(([x,y,z])=>{
+    const trunk=cylinder(0.4,0.5,3.5,0x5a3818);
+    trunk.position.set(x,y+1.75,z);
+    const crown=new THREE.Mesh(new THREE.ConeGeometry(2.5,6,8),new THREE.MeshLambertMaterial({color:0x2a6020}));
+    crown.position.set(x,y+6.5,z);
+    const crown2=new THREE.Mesh(new THREE.ConeGeometry(2,4.5,8),new THREE.MeshLambertMaterial({color:0x3a7030}));
+    crown2.position.set(x,y+8.5,z);
+    g.add(trunk,crown,crown2);
+  });
+
+  // Surface building
+  const bldg=box(12,5,8,0xd0c090);
+  bldg.position.set(12,2.5,-10);
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(8,4,4),new THREE.MeshLambertMaterial({color:0xc0a870}));
+  roof.position.set(12,7,-10); roof.rotation.y=Math.PI/4;
+  g.add(bldg,roof);
+
+  // Shaft (concrete color)
+  const shaft=box(4,70,4,0xb8b8c8);
+  shaft.position.set(0,-37,0);
+  g.add(shaft);
+
+  // Cable
+  const cG=new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(0,-2,0),new THREE.Vector3(0,-72,0)),1,0.15,8,false);
+  const cable=new THREE.Mesh(cG,new THREE.MeshLambertMaterial({color:0x303050}));
+  g.add(cable);
+
+  // Main tunnel (rectangular, granite color slightly lighter)
+  const mainTun=box(40,5,6,0xa09080);
+  mainTun.position.set(20,-74,0);
+  g.add(mainTun);
+
+  // Side tunnels + deposition holes with full layer detail
+  [12,26,36].forEach(sx=>{
+    // side tunnel
+    const st=box(5,5,22,0xa09080);
+    st.position.set(sx,-74,11);
+    g.add(st);
+
+    [5,15].forEach(sz=>{
+      // Granite surround (already part of granite body, just mark with outline)
+      // Bentonite ring
+      const bento=cylinder(4,4,10,0xc8a860);
+      bento.position.set(sx,-81,sz);
+      bento.userData={info:'bentoniet'};
+      g.add(bento);
+      // Copper cylinder
+      const copper=cylinder(2.8,2.8,10,0xc87040);
+      copper.position.set(sx,-81,sz);
+      copper.userData={info:'koper'};
+      g.add(copper);
+      // Waste
+      const waste=cylinder(1.8,1.8,9,0x50a850);
+      waste.position.set(sx,-81,sz);
+      g.add(waste);
+    });
+  });
+
+  // Granite click
+  const gClick=new THREE.Mesh(new THREE.SphereGeometry(2,16,16),new THREE.MeshLambertMaterial({color:0x8a7a6a}));
+  gClick.position.set(-40,-40,0); gClick.userData={info:'graniet'}; g.add(gClick);
+}
+
+grpMat.visible=false;
+
+// ─────────────────────────────────────────────
+// 2D SVG
+// ─────────────────────────────────────────────
+const SVG_NS='http://www.w3.org/2000/svg';
+function make2dSVG(){
+  const svgEl=document.createElementNS(SVG_NS,'svg');
+  svgEl.setAttribute('viewBox','0 0 900 760');
+  svgEl.setAttribute('preserveAspectRatio','xMidYMid meet');
+  svgEl.style.cssText='width:100%;height:100%;';
+  svgEl.innerHTML=`
+  <defs>
+    <pattern id="g2" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M30 0L0 0 0 30" fill="none" stroke="rgba(90,150,220,0.13)" stroke-width="1"/>
+    </pattern>
+    <pattern id="hat" width="9" height="9" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="9" stroke="#7a6a5a" stroke-width="1.2" opacity="0.35"/>
+    </pattern>
+  </defs>
+
+  <!-- white bg with grid -->
+  <rect width="900" height="760" fill="white"/>
+  <rect width="900" height="760" fill="url(#g2)"/>
+
+  <!-- Sky zone -->
+  <rect width="900" height="105" fill="#edf6ff" opacity=".7"/>
+
+  <!-- Finnish trees -->
+  <g fill="#2a6020">
+    <polygon points="40,100 52,68 64,100" fill="#3a7030"/>
+    <polygon points="40,88 52,58 64,88" fill="#2a6020"/>
+    <rect x="49" y="100" width="6" height="10" fill="#5a3818"/>
+    <polygon points="75,100 85,75 95,100" fill="#3a7030"/>
+    <rect x="82" y="100" width="6" height="9" fill="#5a3818"/>
+    <polygon points="108,100 122,62 136,100" fill="#2a6020"/>
+    <polygon points="108,88 122,52 136,88" fill="#3a7030"/>
+    <rect x="119" y="100" width="6" height="10" fill="#5a3818"/>
+    <polygon points="800,100 812,72 824,100" fill="#3a7030"/>
+    <rect x="809" y="100" width="6" height="10" fill="#5a3818"/>
+    <polygon points="836,100 850,65 864,100" fill="#2a6020"/>
+    <polygon points="836,88 850,55 864,88" fill="#3a7030"/>
+    <rect x="847" y="100" width="6" height="10" fill="#5a3818"/>
+  </g>
+
+  <!-- Topsoil -->
+  <rect x="0" y="100" width="900" height="16" fill="#6a9a50"/>
+  <!-- Subsoil -->
+  <rect x="0" y="116" width="900" height="30" fill="#a08858"/>
+
+  <!-- Granite body -->
+  <rect x="0" y="146" width="900" height="614" fill="#8a7a6a"/>
+  <rect x="0" y="146" width="900" height="614" fill="url(#hat)" opacity=".55"/>
+
+  <!-- Surface building -->
+  <rect x="408" y="52" width="68" height="50" fill="#d8d0a8" stroke="#a09060" stroke-width="1.5"/>
+  <polygon points="408,52 442,32 476,52" fill="#c8c090" stroke="#a09060" stroke-width="1.5"/>
+  <rect x="428" y="68" width="14" height="20" fill="#88a0b0"/>
+  <text x="442" y="116" text-anchor="middle" fill="#5a4010" font-size="10" font-family="Segoe UI,sans-serif">Oppervlakgebouw</text>
+
+  <!-- SHAFT: two walls -->
+  <rect x="377" y="28" width="13" height="690" fill="#c0c0d0" stroke="#909098" stroke-width="1"/>
+  <rect x="410" y="28" width="13" height="690" fill="#c0c0d0" stroke="#909098" stroke-width="1"/>
+  <!-- Shaft interior fill -->
+  <rect x="390" y="28" width="20" height="690" fill="#e0e0ee" opacity=".6"/>
+  <!-- Cable -->
+  <line x1="400" y1="28" x2="400" y2="718" stroke="#282840" stroke-width="3"/>
+  <line x1="394" y1="28" x2="394" y2="718" stroke="#5050a0" stroke-width="1.5" stroke-dasharray="6,4" opacity=".6"/>
+
+  <!-- Shaft label -->
+  <text x="432" y="60" fill="#9b72cc" font-size="10" font-weight="600" font-family="Segoe UI,sans-serif">Schacht ↓ 700m</text>
+
+  <!-- MAIN TUNNEL (horizontal, goes RIGHT from shaft bottom) -->
+  <!-- Floor -->
+  <rect x="400" y="718" width="340" height="30" fill="#a09080" stroke="#706050" stroke-width="1.5"/>
+  <!-- Ceiling -->
+  <rect x="400" y="700" width="340" height="18" fill="#b0a090" stroke="#807060" stroke-width="1"/>
+  <text x="560" y="713" text-anchor="middle" fill="#f0e8d0" font-size="10" font-weight="600" font-family="Segoe UI,sans-serif">Hoofdgang (rechthoekig)</text>
+
+  <!-- SIDE TUNNELS going down (into page in 2D = shown as vertical stubs below main tunnel) -->
+  <!-- Side tunnel 1 at x=450 -->
+  <rect x="435" y="748" width="28" height="8" fill="#a09080" stroke="#706050" stroke-width="1"/>
+  <!-- depo holes 1a -->
+  <g style="cursor:pointer" onclick="window.showInfo('depositie')">
+    <g transform="translate(444,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+    <g transform="translate(458,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+  </g>
+
+  <!-- Side tunnel 2 at x=560 -->
+  <rect x="545" y="748" width="28" height="8" fill="#a09080" stroke="#706050" stroke-width="1"/>
+  <g style="cursor:pointer" onclick="window.showInfo('depositie')">
+    <g transform="translate(554,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+    <g transform="translate(568,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+  </g>
+
+  <!-- Side tunnel 3 at x=670 -->
+  <rect x="655" y="748" width="28" height="8" fill="#a09080" stroke="#706050" stroke-width="1"/>
+  <g style="cursor:pointer" onclick="window.showInfo('depositie')">
+    <g transform="translate(664,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+    <g transform="translate(678,756)">
+      <ellipse cx="0" cy="10" rx="9" ry="14" fill="#8a7a6a" stroke="#706050" stroke-width="1.2"/>
+      <ellipse cx="0" cy="10" rx="7" ry="11" fill="#c8a860"/>
+      <ellipse cx="0" cy="10" rx="4.5" ry="7.5" fill="#c87040"/>
+      <ellipse cx="0" cy="10" rx="2.5" ry="5" fill="#50a850"/>
+    </g>
+  </g>
+
+  <!-- Annotations -->
+  <!-- Depth markers -->
+  <line x1="44" y1="100" x2="120" y2="100" stroke="#3a5020" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <text x="8" y="103" fill="#2a4010" font-size="9" font-family="Segoe UI,sans-serif">Maaiveld</text>
+  <line x1="44" y1="700" x2="120" y2="700" stroke="#c0b090" stroke-width="1.2" stroke-dasharray="3,2"/>
+  <text x="8" y="703" fill="#f0e0c0" font-size="9" font-family="Segoe UI,sans-serif">700 m</text>
+
+  <!-- L-shape dashed indicator -->
+  <path d="M370,100 L370,700 L740,700" fill="none" stroke="#c4a8e0" stroke-width="1.5" stroke-dasharray="5,3" opacity=".5"/>
+  <text x="350" y="415" fill="#9b72cc" font-size="9" font-family="Segoe UI,sans-serif" transform="rotate(-90,350,415)" opacity=".7">L-vorm schacht + gang</text>
+
+  <!-- Legend -->
+  <rect x="12" y="150" width="170" height="150" fill="rgba(255,255,255,.9)" rx="8" stroke="#c4a8e0" stroke-width="1.2"/>
+  <text x="20" y="167" fill="#2a1f3d" font-size="10" font-weight="700" font-family="Segoe UI,sans-serif">Legenda</text>
+  <rect x="20" y="174" width="12" height="12" fill="#8a7a6a"/><text x="36" y="185" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Graniet</text>
+  <rect x="20" y="192" width="12" height="12" fill="#c8a860"/><text x="36" y="203" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Bentonietklei</text>
+  <rect x="20" y="210" width="12" height="12" fill="#c87040"/><text x="36" y="221" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Koperen cilinder</text>
+  <rect x="20" y="228" width="12" height="12" fill="#50a850"/><text x="36" y="239" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Kernafval</text>
+  <rect x="20" y="246" width="12" height="12" fill="#c0c0d0"/><text x="36" y="257" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Beton / Schacht</text>
+  <rect x="20" y="264" width="12" height="5" fill="#282840"/><text x="36" y="271" fill="#2a1f3d" font-size="9" font-family="Segoe UI,sans-serif">Kabel</text>
+
+  <!-- Title -->
+  <text x="450" y="748" text-anchor="middle" fill="#9b72cc" font-size="13" font-weight="700" font-family="Segoe UI,sans-serif">Onkalo – 2D Doorsnede</text>
+  `;
+  return svgEl;
+}
+
+// ─────────────────────────────────────────────
+// CAMERA & ORBIT CONTROLS (manual)
+// ─────────────────────────────────────────────
+let mode = 'drawn';
+let theta = 0.6, phi = 1.0, radius = 180;
+let targetX=15, targetY=-40, targetZ=10;
+let isDragging=false, prevMX=0, prevMY=0;
+
+function updateCamera(){
+  camera.position.x = targetX + radius*Math.sin(phi)*Math.sin(theta);
+  camera.position.y = targetY + radius*Math.cos(phi);
+  camera.position.z = targetZ + radius*Math.sin(phi)*Math.cos(theta);
+  camera.lookAt(targetX, targetY, targetZ);
+}
+updateCamera();
+
+canvas.addEventListener('mousedown',e=>{
+  if(mode==='2d') return;
+  isDragging=true; prevMX=e.clientX; prevMY=e.clientY;
+});
+window.addEventListener('mousemove',e=>{
+  if(!isDragging) return;
+  const dx=(e.clientX-prevMX)*0.007;
+  const dy=(e.clientY-prevMY)*0.007;
+  theta-=dx; phi=Math.max(0.15,Math.min(Math.PI-0.15,phi+dy));
+  prevMX=e.clientX; prevMY=e.clientY;
+  updateCamera();
+});
+window.addEventListener('mouseup',()=>isDragging=false);
+canvas.addEventListener('wheel',e=>{
+  if(mode==='2d') return;
+  e.preventDefault();
+  radius=Math.max(30,Math.min(400,radius*(e.deltaY>0?1.1:0.91)));
+  updateCamera();
+},{passive:false});
+
+// touch
+let tc0,tc1;
+canvas.addEventListener('touchstart',e=>{
+  if(mode==='2d') return;
+  if(e.touches.length===1){tc0=e.touches[0];}
+});
+canvas.addEventListener('touchmove',e=>{
+  if(mode==='2d') return;
+  e.preventDefault();
+  if(e.touches.length===1 && tc0){
+    const dx=(e.touches[0].clientX-tc0.clientX)*0.01;
+    const dy=(e.touches[0].clientY-tc0.clientY)*0.01;
+    theta-=dx; phi=Math.max(0.15,Math.min(Math.PI-0.15,phi+dy));
+    tc0=e.touches[0]; updateCamera();
+  }
+},{passive:false});
+
+// click detection on 3D objects
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+canvas.addEventListener('click',e=>{
+  if(mode==='2d') return;
+  const rect=canvas.getBoundingClientRect();
+  mouse.x=((e.clientX-rect.left)/rect.width)*2-1;
+  mouse.y=-((e.clientY-rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  const group=mode==='drawn'?grpDrawn:grpMat;
+  const hits=raycaster.intersectObjects(group.children,true);
+  for(const h of hits){
+    if(h.object.userData && h.object.userData.info){
+      showInfo(h.object.userData.info);
+      break;
+    }
+  }
+});
+
+function zoomBy(f){radius=Math.max(30,Math.min(400,radius/f));updateCamera();}
+function resetCam(){theta=0.6;phi=1.0;radius=180;targetX=15;targetY=-40;targetZ=10;updateCamera();}
+
+// ─────────────────────────────────────────────
+// MODE SWITCHING
+// ─────────────────────────────────────────────
+const svgLayer = document.getElementById('svg-layer');
+let svg2d = null;
+
+function setMode(m){
+  mode=m;
+  ['drawn','mat','2d'].forEach(k=>document.getElementById('btn-'+k).classList.toggle('on',k===m));
+
+  if(m==='2d'){
+    canvas.style.display='none';
+    svgLayer.style.display='block';
+    if(!svg2d){svg2d=make2dSVG();svgLayer.appendChild(svg2d);}
+  } else {
+    canvas.style.display='block';
+    svgLayer.style.display='none';
+    grpDrawn.visible = m==='drawn';
+    grpMat.visible   = m==='mat';
+  }
+}
+
+// ─────────────────────────────────────────────
+// RENDER LOOP
+// ─────────────────────────────────────────────
+function resize(){
+  const w=canvas.clientWidth, h=canvas.clientHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+resize();
+window.addEventListener('resize',resize);
+
+function animate(){
+  requestAnimationFrame(animate);
+  if(mode!=='2d') renderer.render(scene,camera);
+}
+animate();
+
+// expose for SVG onclick
+window.showInfo = showInfo;
+
+document.getElementById('loading').style.display='none';
+</script>
+</body>
+</html>
